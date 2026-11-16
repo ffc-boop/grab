@@ -1,491 +1,295 @@
-local CoreGui = game:GetService("CoreGui")
 local Players = game:GetService("Players")
-local Workspace = game:GetService("Workspace")
-local LP = Players.LocalPlayer
-
--- Remove GUI antiga se existir
-local OwnerScripts = CoreGui:FindFirstChild("OwnerScripts")
-if OwnerScripts then
-    OwnerScripts:Destroy()
+local RunService = game:GetService("RunService")
+local Stats = game:GetService("Stats")
+local UserInputService = game:GetService("UserInputService")
+local lp = Players.LocalPlayer
+local playerGui = lp:WaitForChild("PlayerGui")
+local STEAL_RADIUS = 60
+local STEAL_DURATION = 1.4
+local isStealing = false
+local StealData = {}
+local COLORS = {
+	Border = Color3.fromRGB(58, 222, 126),
+	MainBackground = Color3.fromRGB(15, 20, 18),
+	TrackBackground = Color3.fromRGB(20, 31, 25),
+	TextMint = Color3.fromRGB(153, 235, 192),
+	TextWhite = Color3.fromRGB(240, 245, 245)
+}
+local FONTS = {
+	Black = Enum.Font.GothamBlack,
+	Bold = Enum.Font.GothamBold,
+}
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "AutoStealUI"
+screenGui.ResetOnSpawn = false
+screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+screenGui.Parent = playerGui
+local mainBar = Instance.new("Frame")
+mainBar.Name = "MainBar"
+mainBar.Size = UDim2.new(0, 320, 0, 36)
+mainBar.Position = UDim2.new(0.5, -160, 0.5, -18)
+mainBar.AnchorPoint = Vector2.new(0.5, 0.5)
+mainBar.BackgroundColor3 = COLORS.MainBackground
+mainBar.Parent = screenGui
+local mainCorner = Instance.new("UICorner")
+mainCorner.CornerRadius = UDim.new(0.5, 0)
+mainCorner.Parent = mainBar
+local mainStroke = Instance.new("UIStroke")
+mainStroke.Color = COLORS.Border
+mainStroke.Thickness = 2
+mainStroke.Parent = mainBar
+local dragHandle = Instance.new("Frame")
+dragHandle.Name = "DragHandle"
+dragHandle.Size = UDim2.new(1, 0, 1, 0)
+dragHandle.BackgroundTransparency = 1
+dragHandle.Parent = mainBar
+local progressTrack = Instance.new("Frame")
+progressTrack.Name = "ProgressTrack"
+progressTrack.Size = UDim2.new(0, 140, 0, 24)
+progressTrack.Position = UDim2.new(0, 6, 0.5, 0)
+progressTrack.AnchorPoint = Vector2.new(0, 0.5)
+progressTrack.BackgroundColor3 = COLORS.TrackBackground
+progressTrack.ClipsDescendants = true
+progressTrack.Parent = mainBar
+local trackCorner = Instance.new("UICorner")
+trackCorner.CornerRadius = UDim.new(0.5, 0)
+trackCorner.Parent = progressTrack
+local progressFill = Instance.new("Frame")
+progressFill.Name = "ProgressFill"
+progressFill.Size = UDim2.new(0, 0, 1, 0)
+progressFill.BackgroundColor3 = COLORS.Border
+progressFill.Parent = progressTrack
+local fillCorner = Instance.new("UICorner")
+fillCorner.CornerRadius = UDim.new(0.5, 0)
+fillCorner.Parent = progressFill
+local stealText = Instance.new("TextLabel")
+stealText.Name = "LabelSteal"
+stealText.Size = UDim2.new(0, 50, 1, 0)
+stealText.Position = UDim2.new(0, 8, 0, 0)
+stealText.BackgroundTransparency = 1
+stealText.Text = "STEAL"
+stealText.Font = FONTS.Black
+stealText.TextColor3 = COLORS.TextMint
+stealText.TextSize = 11
+stealText.TextXAlignment = Enum.TextXAlignment.Left
+stealText.Parent = progressTrack
+local percentText = Instance.new("TextLabel")
+percentText.Name = "LabelPercent"
+percentText.Size = UDim2.new(0, 30, 1, 0)
+percentText.Position = UDim2.new(1, -6, 0, 0)
+percentText.AnchorPoint = Vector2.new(1, 0)
+percentText.BackgroundTransparency = 1
+percentText.Text = "0%"
+percentText.Font = FONTS.Black
+percentText.TextColor3 = COLORS.Border
+percentText.TextSize = 11
+percentText.TextXAlignment = Enum.TextXAlignment.Right
+percentText.Parent = progressTrack
+local fpsText = Instance.new("TextLabel")
+fpsText.Name = "LabelFPS"
+fpsText.Size = UDim2.new(0, 50, 1, 0)
+fpsText.Position = UDim2.new(0, 156, 0, 0)
+fpsText.BackgroundTransparency = 1
+fpsText.Text = "FPS:0"
+fpsText.Font = FONTS.Bold
+fpsText.TextColor3 = COLORS.TextWhite
+fpsText.TextSize = 11
+fpsText.TextXAlignment = Enum.TextXAlignment.Left
+fpsText.Parent = mainBar
+local pingEmoji = Instance.new("TextLabel")
+pingEmoji.Name = "EmojiPing"
+pingEmoji.Size = UDim2.new(0, 14, 0, 14)
+pingEmoji.Position = UDim2.new(0, 216, 0.5, 0)
+pingEmoji.AnchorPoint = Vector2.new(0, 0.5)
+pingEmoji.BackgroundTransparency = 1
+pingEmoji.Text = "📡"
+pingEmoji.TextSize = 11
+pingEmoji.Parent = mainBar
+local pingText = Instance.new("TextLabel")
+pingText.Name = "LabelPing"
+pingText.Size = UDim2.new(0, 45, 1, 0)
+pingText.Position = UDim2.new(0, 234, 0, 0)
+pingText.BackgroundTransparency = 1
+pingText.Text = "0ms"
+pingText.Font = FONTS.Bold
+pingText.TextColor3 = COLORS.TextWhite
+pingText.TextSize = 11
+pingText.TextXAlignment = Enum.TextXAlignment.Left
+pingText.Parent = mainBar
+local statusIndicator = Instance.new("Frame")
+statusIndicator.Name = "StatusIndicator"
+statusIndicator.Size = UDim2.new(0, 24, 0, 24)
+statusIndicator.Position = UDim2.new(1, -6, 0.5, 0)
+statusIndicator.AnchorPoint = Vector2.new(1, 0.5)
+statusIndicator.BackgroundColor3 = COLORS.MainBackground
+statusIndicator.Parent = mainBar
+local statusCorner = Instance.new("UICorner")
+statusCorner.CornerRadius = UDim.new(1, 0)
+statusCorner.Parent = statusIndicator
+local statusStroke = Instance.new("UIStroke")
+statusStroke.Color = COLORS.Border
+statusStroke.Thickness = 2
+statusStroke.Parent = statusIndicator
+local statusDot = Instance.new("Frame")
+statusDot.Name = "StatusDot"
+statusDot.Size = UDim2.new(0, 10, 0, 10)
+statusDot.Position = UDim2.new(0.5, 0, 0.5, 0)
+statusDot.AnchorPoint = Vector2.new(0.5, 0.5)
+statusDot.BackgroundColor3 = COLORS.Border
+statusDot.Parent = statusIndicator
+local dotCorner = Instance.new("UICorner")
+dotCorner.CornerRadius = UDim.new(1, 0)
+dotCorner.Parent = statusDot
+local dragToggle = false
+local dragStart, startPos
+local function updateInput(input)
+	local delta = input.Position - dragStart
+	mainBar.Position = UDim2.new(
+		startPos.X.Scale, 
+		startPos.X.Offset + delta.X, 
+		startPos.Y.Scale, 
+		startPos.Y.Offset + delta.Y
+	)
 end
-
--- Variáveis globais
-local autoStealEnabled = true
-local desyncEnabled = false
-
--- Cria nova GUI
-local OwnerScripts = Instance.new("ScreenGui")
-OwnerScripts.Name = "OwnerScripts"
-OwnerScripts.ResetOnSpawn = false
-OwnerScripts.Parent = CoreGui
-
--- Frame principal
-local Frame = Instance.new("Frame")
-Frame.Size = UDim2.new(0, 340, 0, 280)
-Frame.Position = UDim2.new(0.5, -170, 0.5, -140)
-Frame.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
-Frame.BorderSizePixel = 0
-Frame.Parent = OwnerScripts
-Frame.Active = true
-Frame.Draggable = true
-
-local UICorner = Instance.new("UICorner")
-UICorner.Parent = Frame
-UICorner.CornerRadius = UDim.new(0, 16)
-
-local UIStroke = Instance.new("UIStroke")
-UIStroke.Parent = Frame
-UIStroke.Color = Color3.fromRGB(0, 140, 255)
-UIStroke.Thickness = 2
-UIStroke.Transparency = 0.2
-
--- Título
-local TextLabel = Instance.new("TextLabel")
-TextLabel.Size = UDim2.new(1, -20, 0, 40)
-TextLabel.Position = UDim2.new(0, 10, 0, 10)
-TextLabel.BackgroundTransparency = 1
-TextLabel.Text = "OWNER SCRIPTS"
-TextLabel.Font = Enum.Font.GothamBold
-TextLabel.TextSize = 20
-TextLabel.TextColor3 = Color3.fromRGB(0, 140, 255)
-TextLabel.Parent = Frame
-
--- Botão Auto TP
-local AutoTPButton = Instance.new("TextButton")
-AutoTPButton.Size = UDim2.new(1, -40, 0, 45)
-AutoTPButton.Position = UDim2.new(0, 20, 0, 60)
-AutoTPButton.BackgroundColor3 = Color3.fromRGB(0, 100, 0)
-AutoTPButton.Text = "⚡ AUTO TP: ON"
-AutoTPButton.Font = Enum.Font.GothamBold
-AutoTPButton.TextSize = 16
-AutoTPButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-AutoTPButton.Parent = Frame
-
-local AutoTPCorner = Instance.new("UICorner")
-AutoTPCorner.Parent = AutoTPButton
-AutoTPCorner.CornerRadius = UDim.new(0, 10)
-
-local AutoTPStroke = Instance.new("UIStroke")
-AutoTPStroke.Parent = AutoTPButton
-AutoTPStroke.Color = Color3.fromRGB(0, 255, 100)
-AutoTPStroke.Thickness = 2
-
--- Botão Desync
-local DesyncButton = Instance.new("TextButton")
-DesyncButton.Size = UDim2.new(1, -40, 0, 45)
-DesyncButton.Position = UDim2.new(0, 20, 0, 115)
-DesyncButton.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-DesyncButton.Text = "🔧 DESYNC"
-DesyncButton.Font = Enum.Font.GothamBold
-DesyncButton.TextSize = 16
-DesyncButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-DesyncButton.Parent = Frame
-
-local DesyncCorner = Instance.new("UICorner")
-DesyncCorner.Parent = DesyncButton
-DesyncCorner.CornerRadius = UDim.new(0, 10)
-
-local DesyncStroke = Instance.new("UIStroke")
-DesyncStroke.Parent = DesyncButton
-DesyncStroke.Color = Color3.fromRGB(255, 100, 0)
-DesyncStroke.Thickness = 2
-
--- Info Label
-local InfoLabel = Instance.new("TextLabel")
-InfoLabel.Size = UDim2.new(1, -20, 0, 80)
-InfoLabel.Position = UDim2.new(0, 10, 0, 150)
-InfoLabel.BackgroundTransparency = 1
-InfoLabel.Text = "Auto Steal ativo automaticamente\nClique em Desync para ativar FFlags\n\nScript by Owner"
-InfoLabel.Font = Enum.Font.Gotham
-InfoLabel.TextSize = 12
-InfoLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
-InfoLabel.TextWrapped = true
-InfoLabel.Parent = Frame
-
--- 🔍 Localiza sua base (DeliveryHitbox)
-local function GetMinhaBaseHitbox()
-    local plots = Workspace:FindFirstChild("Plots")
-    if not plots then return nil end
-
-    for _, plot in pairs(plots:GetChildren()) do
-        local sign = plot:FindFirstChild("PlotSign")
-        if sign then
-            local yourBase = sign:FindFirstChild("YourBase")
-            if yourBase and yourBase.Enabled then
-                local hitbox = plot:FindFirstChild("DeliveryHitbox")
-                if hitbox then return hitbox end
+dragHandle.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		dragToggle = true
+		dragStart = input.Position
+		startPos = mainBar.Position
+		input.Changed:Connect(function()
+			if input.UserInputState == Enum.UserInputState.End then
+				dragToggle = false
+			end
+		end)
+	end
+end)
+UserInputService.InputChanged:Connect(function(input)
+	if dragToggle and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+		updateInput(input)
+	end
+end)
+local function updateTopBar()
+    local fps = 60
+    local ping = 0
+    local framesCount = 0
+    local last = tick()
+    RunService.RenderStepped:Connect(function()
+        framesCount = framesCount + 1
+        if tick() - last >= 1 then
+            fps = framesCount
+            framesCount = 0
+            last = tick()
+        end
+        local network = Stats:FindFirstChild("Network")
+        if network and network:FindFirstChild("ServerStatsItem") then
+            local dataPing = network.ServerStatsItem:FindFirstChild("Data Ping")
+            if dataPing then 
+                ping = math.floor(dataPing:GetValue()) 
             end
         end
+        fpsText.Text = "FPS:" .. fps
+        pingText.Text = ping .. "ms"
+    end)
+end
+local function getHRP()
+    local c = lp.Character
+    if c then 
+        return c:FindFirstChild("HumanoidRootPart") or c:FindFirstChild("Torso") or c:FindFirstChild("UpperTorso") 
     end
     return nil
 end
-
--- FFlags para Desync
-local FFlags = {
-    GameNetPVHeaderRotationalVelocityZeroCutoffExponent = -5000,
-    LargeReplicatorWrite5 = true,
-    LargeReplicatorEnabled9 = true,
-    AngularVelociryLimit = 360,
-    TimestepArbiterVelocityCriteriaThresholdTwoDt = 2147483646,
-    S2PhysicsSenderRate = 15000,
-    DisableDPIScale = true,
-    MaxDataPacketPerSend = 2147483647,
-    PhysicsSenderMaxBandwidthBps = 20000,
-    TimestepArbiterHumanoidLinearVelThreshold = 21,
-    MaxMissedWorldStepsRemembered = -2147483648,
-    PlayerHumanoidPropertyUpdateRestrict = true,
-    SimDefaultHumanoidTimestepMultiplier = 0,
-    StreamJobNOUVolumeLengthCap = 2147483647,
-    DebugSendDistInSteps = -2147483648,
-    GameNetDontSendRedundantNumTimes = 1,
-    CheckPVLinearVelocityIntegrateVsDeltaPositionThresholdPercent = 1,
-    CheckPVDifferencesForInterpolationMinVelThresholdStudsPerSecHundredth = 1,
-    LargeReplicatorSerializeRead3 = true,
-    ReplicationFocusNouExtentsSizeCutoffForPauseStuds = 2147483647,
-    CheckPVCachedVelThresholdPercent = 10,
-    CheckPVDifferencesForInterpolationMinRotVelThresholdRadsPerSecHundredth = 1,
-    GameNetDontSendRedundantDeltaPositionMillionth = 1,
-    InterpolationFrameVelocityThresholdMillionth = 5,
-    StreamJobNOUVolumeCap = 2147483647,
-    InterpolationFrameRotVelocityThresholdMillionth = 5,
-    CheckPVCachedRotVelThresholdPercent = 10,
-    WorldStepMax = 30,
-    InterpolationFramePositionThresholdMillionth = 5,
-    TimestepArbiterHumanoidTurningVelThreshold = 1,
-    SimOwnedNOUCountThresholdMillionth = 2147483647,
-    GameNetPVHeaderLinearVelocityZeroCutoffExponent = -5000,
-    NextGenReplicatorEnabledWrite4 = true,
-    TimestepArbiterOmegaThou = 1073741823,
-    MaxAcceptableUpdateDelay = 1,
-    LargeReplicatorSerializeWrite4 = true
-}
-
--- Função de Respawn
-local function respawnar(plr)
-    local rcdEnabled, wasHidden = false, false
-    if gethidden then
-        rcdEnabled = gethidden(Workspace, 'RejectCharacterDeletions') ~= Enum.RejectCharacterDeletions.Disabled
+local function isMyPlotByName(pn)
+    local plots = workspace:FindFirstChild("Plots")
+    if not plots then return false end
+    local plot = plots:FindFirstChild(pn)
+    if not plot then return false end
+    local sign = plot:FindFirstChild("PlotSign")
+    if sign then
+        local yb = sign:FindFirstChild("YourBase")
+        if yb and yb:IsA("BillboardGui") then return yb.Enabled == true end
     end
-
-    if rcdEnabled and replicatesignal then
-        replicatesignal(plr.ConnectDiedSignalBackend)
-        task.wait(Players.RespawnTime - 0.1)
-        replicatesignal(plr.Kill)
-    else
-        local char = plr.Character
-        local hum = char:FindFirstChildWhichIsA('Humanoid')
-        if hum then
-            hum:ChangeState(Enum.HumanoidStateType.Dead)
-        end
-        char:ClearAllChildren()
-        local newChar = Instance.new('Model')
-        newChar.Parent = Workspace
-        plr.Character = newChar
-        task.wait()
-        plr.Character = char
-        newChar:Destroy()
-    end
+    return false
 end
-
--- Função Unwalk (desabilita animações)
-local function disableAnims(character)
-    if not character then return end
-
-    local humanoid = character:FindFirstChildOfClass("Humanoid") or character:WaitForChild("Humanoid", 5)
-    if humanoid then
-        pcall(function()
-            for _, track in ipairs(humanoid:GetPlayingAnimationTracks()) do
-                track:Stop()
-            end
-        end)
-    end
-
-    pcall(function()
-        for _, obj in ipairs(character:GetDescendants()) do
-            if obj:IsA("Animator") or obj:IsA("AnimationController") then
-                obj:Destroy()
-            end
-        end
-    end)
-
-    local conn
-    conn = character.DescendantAdded:Connect(function(desc)
-        if desc:IsA("Animator") or desc:IsA("AnimationController") then
-            pcall(function() desc:Destroy() end)
-        elseif desc:IsA("Humanoid") then
-            pcall(function()
-                for _, track in ipairs(desc:GetPlayingAnimationTracks()) do
-                    track:Stop()
-                end
-            end)
-        end
-    end)
-
-    character.AncestryChanged:Connect(function(_, parent)
-        if not parent and conn then
-            conn:Disconnect()
-        end
-    end)
-end
-
--- Botão Desync (ativa FFlags)
-DesyncButton.MouseButton1Click:Connect(function()
-    for name, value in pairs(FFlags) do
-        pcall(function()
-            setfflag(tostring(name), tostring(value))
-        end)
-    end
-    
-    DesyncButton.Text = "✅ DESYNC ATIVADO"
-    DesyncButton.BackgroundColor3 = Color3.fromRGB(0, 100, 0)
-    
-    respawnar(LP)
-    
-    -- Apply Unwalk after respawn
-    wait(0.5)
-    if LP.Character then
-        disableAnims(LP.Character)
-    end
-    
-    -- Apply to future respawns
-    LP.CharacterAdded:Connect(disableAnims)
-    
-    wait(2)
-    DesyncButton.Text = "🔧 DESYNC"
-    DesyncButton.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-end)
-
--- Auto Steal Function
-local function toggleAutoSteal(Value)
-    autoStealEnabled = Value
-    StatusLabel.Text = autoStealEnabled and "💰 Auto Steal: ON" or "💰 Auto Steal: OFF"
-    StatusLabel.TextColor3 = autoStealEnabled and Color3.fromRGB(0, 255, 100) or Color3.fromRGB(255, 50, 50)
-    
-    if not Value then
-        return
-    end
-
-    local TARGET_HOLD_DURATION = 1.5 
-    local TARGET_MAX_DISTANCE = 10   
-    local CHECK_INTERVAL = 0.25      
-    local HOLD_TIME = 0.6            
-
-    local Character = LP.Character or LP.CharacterAdded:Wait()
-    local RootPart = Character:WaitForChild("HumanoidRootPart")
-    local myPlot = Character:FindFirstAncestorOfClass("Model") 
-
-    LP.CharacterAdded:Connect(function(c)
-        task.wait(0.12)
-        Character = c
-        RootPart = c:WaitForChild("HumanoidRootPart")
-        myPlot = c:FindFirstAncestorOfClass("Model")
-    end)
-
-    local function getBasePart(p) 
-        local par = p.Parent
-        if par:IsA("BasePart") then return par end
-        if par:IsA("Attachment") and par.Parent:IsA("BasePart") then return par.Parent end
-        if par:IsA("Model") and par.PrimaryPart then return par.PrimaryPart end
-        return nil
-    end
-
-    local function isCandidate(prompt)
-        if not prompt.Enabled or prompt.ActionText ~= "Steal" then
-            return false 
-        end
-        if math.abs((prompt.HoldDuration or 0) - TARGET_HOLD_DURATION) > 0.1
-            or math.abs((prompt.MaxActivationDistance or 0) - TARGET_MAX_DISTANCE) > 1 then
-            return false 
-        end
-
-        local part = getBasePart(prompt)
-        if not part or not RootPart then return false end
-
-        local plotsContainer = Workspace:FindFirstChild("Plots")
-        if plotsContainer then
-            local plot = part:FindFirstAncestorWhichIsA("Model")
-            if plot and plot.Parent == plotsContainer and plot == myPlot then
-                return false 
-            end
-        end
-
-        local dist = (part.Position - RootPart.Position).Magnitude
-        return dist <= TARGET_MAX_DISTANCE + 0.5, part, dist
-    end
-
-    local function findClosest()
-        local best, bestDist = nil, math.huge
-        for _, v in ipairs(Workspace:GetDescendants()) do
-            if v:IsA("ProximityPrompt") then
-                local ok, part, dist = isCandidate(v)
-                if ok and dist < bestDist then
-                    best = v
-                    bestDist = dist
+local function findNearestPrompt()
+    local hrp = getHRP()
+    if not hrp then return nil end
+    local plots = workspace:FindFirstChild("Plots")
+    if not plots then return nil end
+    local nearest, dist = nil, math.huge
+    for _, plot in ipairs(plots:GetChildren()) do
+        if isMyPlotByName(plot.Name) then continue end
+        local pods = plot:FindFirstChild("AnimalPodiums")
+        if not pods then continue end
+        for _, pod in ipairs(pods:GetChildren()) do
+            local base = pod:FindFirstChild("Base")
+            if not base then continue end
+            local spawn = base:FindFirstChild("Spawn")
+            if not spawn then continue end
+            local d = (spawn.Position - hrp.Position).Magnitude
+            if d <= STEAL_RADIUS and d < dist then
+                local att = spawn:FindFirstChild("PromptAttachment")
+                if att then
+                    for _, p in ipairs(att:GetChildren()) do
+                        if p:IsA("ProximityPrompt") and p.ActionText and p.ActionText:find("Steal") then
+                            nearest, dist = p, d
+                        end
+                    end
                 end
             end
         end
-        return best
     end
-
-    local function tryActivate(prompt)
-        if not prompt then return end
-        
-        -- Teleporta para o item antes de ativar
-        local part = getBasePart(prompt)
-        if part and RootPart then
-            local targetPos = Vector3.new(-363.87, -7.71, 104.71) + Vector3.new(0, 5, 0)
-            if Character and Character:FindFirstChild("HumanoidRootPart") then
-                Character.HumanoidRootPart.CFrame = CFrame.new(targetPos)
-                task.wait(0.1)
+    return nearest
+end
+local function updateProgressBar(p)
+    if progressFill then
+        progressFill.Size = UDim2.new(p, 0, 1, 0)
+    end
+    if percentText then
+        percentText.Text = math.floor(p * 100) .. "%"
+    end
+end
+local function executeSteal(prompt)
+    if isStealing then return end
+    if not StealData[prompt] then
+        StealData[prompt] = {hold = {}, trigger = {}, ready = true}
+        if getconnections then
+            for _, c in ipairs(getconnections(prompt.PromptButtonHoldBegan)) do
+                if c.Function then table.insert(StealData[prompt].hold, c.Function) end
+            end
+            for _, c in ipairs(getconnections(prompt.Triggered)) do
+                if c.Function then table.insert(StealData[prompt].trigger, c.Function) end
             end
         end
-        
-        pcall(function()
-            if typeof(prompt.InputHoldBegin) == "function" then
-                prompt:InputHoldBegin()
-                task.wait(HOLD_TIME)
-                prompt:InputHoldEnd()
-            end
-        end)
-        task.wait(0.1)
-        pcall(function()
-            fireproximityprompt(prompt, 1) 
-            task.wait(HOLD_TIME)
-            fireproximityprompt(prompt, 0) 
-        end)
     end
-
+    local data = StealData[prompt]
+    if not data.ready then return end
+    data.ready = false
+    isStealing = true
+    local startTime = tick()
     task.spawn(function()
-        while autoStealEnabled do
-            task.wait(CHECK_INTERVAL)
-            local prompt = findClosest() 
-            if prompt then
-                tryActivate(prompt)      
-            end
+        for _, f in ipairs(data.hold) do pcall(f) end
+        while tick() - startTime < STEAL_DURATION do
+            local elapsed = tick() - startTime
+            local p = math.clamp(elapsed / STEAL_DURATION, 0, 1)
+            updateProgressBar(p)
+            task.wait()
         end
+        updateProgressBar(1)
+        for _, f in ipairs(data.trigger) do pcall(f) end
+        task.wait(0.05)
+        updateProgressBar(0)
+        data.ready = true
+        isStealing = false
     end)
 end
-
--- Inicia Auto Steal automaticamente
-toggleAutoSteal(true)
-
--- Proximity Prompt Handler com Teleporte e MoveTo
-game:GetService("ProximityPromptService").PromptButtonHoldEnded:Connect(function(Prompt, PlayerWhoTriggered)
-    if PlayerWhoTriggered == LP then
-        -- Teleporta para a posição fixa
-        local targetPos = Vector3.new(-363.87, -7.71, 104.71) + Vector3.new(0, 5, 0)
-        if LP.Character and LP.Character:FindFirstChild("HumanoidRootPart") then
-            LP.Character.HumanoidRootPart.CFrame = CFrame.new(targetPos)
-        end
-        
-        task.wait(1.2) -- Aguarda 1.2 segundos após o TP
-        
-        -- Volta para a base usando MoveTo
-        local baseHitbox = GetMinhaBaseHitbox()
-        if baseHitbox then
-            local basePos = baseHitbox.Position
-            if LP.Character and LP.Character:FindFirstChild("Humanoid") then
-                LP.Character.Humanoid:MoveTo(basePos)
-            end
-        end
-    end
-end)
-
--- Auto Steal separado (sem teleporte, só ativa prompts)
-local autoStealEnabled2 = true
-
-local function autoStealLoop()
-    local TARGET_HOLD_DURATION = 1.5 
-    local TARGET_MAX_DISTANCE = 10   
-    local CHECK_INTERVAL = 0.25      
-    local HOLD_TIME = 0.6            
-
-    local Character = LP.Character or LP.CharacterAdded:Wait()
-    local RootPart = Character:WaitForChild("HumanoidRootPart")
-    local myPlot = Character:FindFirstAncestorOfClass("Model") 
-
-    LP.CharacterAdded:Connect(function(c)
-        task.wait(0.12)
-        Character = c
-        RootPart = c:WaitForChild("HumanoidRootPart")
-        myPlot = c:FindFirstAncestorOfClass("Model")
-    end)
-
-    local function getBasePart(p) 
-        local par = p.Parent
-        if par:IsA("BasePart") then return par end
-        if par:IsA("Attachment") and par.Parent:IsA("BasePart") then return par.Parent end
-        if par:IsA("Model") and par.PrimaryPart then return par.PrimaryPart end
-        return nil
-    end
-
-    local function isCandidate(prompt)
-        if not prompt.Enabled or prompt.ActionText ~= "Steal" then
-            return false 
-        end
-        if math.abs((prompt.HoldDuration or 0) - TARGET_HOLD_DURATION) > 0.1
-            or math.abs((prompt.MaxActivationDistance or 0) - TARGET_MAX_DISTANCE) > 1 then
-            return false 
-        end
-
-        local part = getBasePart(prompt)
-        if not part or not RootPart then return false end
-
-        local plotsContainer = Workspace:FindFirstChild("Plots")
-        if plotsContainer then
-            local plot = part:FindFirstAncestorWhichIsA("Model")
-            if plot and plot.Parent == plotsContainer and plot == myPlot then
-                return false 
-            end
-        end
-
-        local dist = (part.Position - RootPart.Position).Magnitude
-        return dist <= TARGET_MAX_DISTANCE + 0.5, part, dist
-    end
-
-    local function findClosest()
-        local best, bestDist = nil, math.huge
-        for _, v in ipairs(Workspace:GetDescendants()) do
-            if v:IsA("ProximityPrompt") then
-                local ok, part, dist = isCandidate(v)
-                if ok and dist < bestDist then
-                    best = v
-                    bestDist = dist
-                end
-            end
-        end
-        return best
-    end
-
-    local function tryActivate(prompt)
-        if not prompt then return end
-        
-        -- SEM TELEPORTE - apenas ativa o prompt
-        pcall(function()
-            if typeof(prompt.InputHoldBegin) == "function" then
-                prompt:InputHoldBegin()
-                task.wait(HOLD_TIME)
-                prompt:InputHoldEnd()
-            end
-        end)
-        task.wait(0.1)
-        pcall(function()
-            fireproximityprompt(prompt, 1) 
-            task.wait(HOLD_TIME)
-            fireproximityprompt(prompt, 0) 
-        end)
-    end
-
-    task.spawn(function()
-        while autoStealEnabled2 do
-            task.wait(CHECK_INTERVAL)
-            local prompt = findClosest() 
-            if prompt then
-                tryActivate(prompt)      
-            end
-        end
+local heartbeatConn
+local function startAutoSteal()
+    if heartbeatConn then return end
+    updateTopBar()
+    heartbeatConn = RunService.Heartbeat:Connect(function()
+        if isStealing then return end
+        local success, prompt = pcall(findNearestPrompt)
+        if success and prompt then pcall(executeSteal, prompt) end
     end)
 end
-
--- NÃO inicia o Auto Steal automático (removido)
--- autoStealLoop()
+startAutoSteal()
