@@ -1,527 +1,491 @@
-local CONFIG = {
-    AUTO_STEAL_NEAREST = false,
-}
+local CoreGui = game:GetService("CoreGui")
 local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local LocalPlayer = Players.LocalPlayer
-local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
-local AnimalsData = require(ReplicatedStorage:WaitForChild("Datas"):WaitForChild("Animals"))
-local allAnimalsCache = {}
-local PromptMemoryCache = {}
-local InternalStealCache = {}
-local LastTargetUID = nil
-local LastPlayerPosition = nil
-local PlayerVelocity = Vector3.zero
-local AUTO_STEAL_PROX_RADIUS = 20
-local IsStealing = false
-local StealProgress = 0
-local CurrentStealTarget = nil
-local StealStartTime = 0
-local CIRCLE_RADIUS = AUTO_STEAL_PROX_RADIUS
-local PART_THICKNESS = 0.3
-local PART_HEIGHT = 0.2
-local PART_COLOR = Color3.fromRGB(0, 255, 255)
-local PartsCount = 65
-local circleParts = {}
-local circleEnabled = true
-local stealConnection = nil
-local velocityConnection = nil
-local function getHRP()
-    local char = LocalPlayer.Character
-    if not char then return nil end
-    return char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("UpperTorso")
+local Workspace = game:GetService("Workspace")
+local LP = Players.LocalPlayer
+
+-- Remove GUI antiga se existir
+local OwnerScripts = CoreGui:FindFirstChild("OwnerScripts")
+if OwnerScripts then
+    OwnerScripts:Destroy()
 end
-local function isMyBase(plotName)
-    local plot = workspace.Plots:FindFirstChild(plotName)
-    if not plot then return false end
-    local sign = plot:FindFirstChild("PlotSign")
-    if sign then
-        local yourBase = sign:FindFirstChild("YourBase")
-        if yourBase and yourBase:IsA("BillboardGui") then
-            return yourBase.Enabled == true
-        end
-    end
-    return false
-end
-local function scanSinglePlot(plot)
-    if not plot or not plot:IsA("Model") then return end
-    if isMyBase(plot.Name) then return end
-    local podiums = plot:FindFirstChild("AnimalPodiums")
-    if not podiums then return end
-    for _, podium in ipairs(podiums:GetChildren()) do
-        if podium:IsA("Model") and podium:FindFirstChild("Base") then
-            local animalName = "Unknown"
-            local spawn = podium.Base:FindFirstChild("Spawn")
-            if spawn then
-                for _, child in ipairs(spawn:GetChildren()) do
-                    if child:IsA("Model") and child.Name ~= "PromptAttachment" then
-                        animalName = child.Name
-                        local animalInfo = AnimalsData[animalName]
-                        if animalInfo and animalInfo.DisplayName then
-                            animalName = animalInfo.DisplayName
-                        end
-                        break
-                    end
-                end
+
+-- Variáveis globais
+local autoStealEnabled = true
+local desyncEnabled = false
+
+-- Cria nova GUI
+local OwnerScripts = Instance.new("ScreenGui")
+OwnerScripts.Name = "OwnerScripts"
+OwnerScripts.ResetOnSpawn = false
+OwnerScripts.Parent = CoreGui
+
+-- Frame principal
+local Frame = Instance.new("Frame")
+Frame.Size = UDim2.new(0, 340, 0, 280)
+Frame.Position = UDim2.new(0.5, -170, 0.5, -140)
+Frame.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
+Frame.BorderSizePixel = 0
+Frame.Parent = OwnerScripts
+Frame.Active = true
+Frame.Draggable = true
+
+local UICorner = Instance.new("UICorner")
+UICorner.Parent = Frame
+UICorner.CornerRadius = UDim.new(0, 16)
+
+local UIStroke = Instance.new("UIStroke")
+UIStroke.Parent = Frame
+UIStroke.Color = Color3.fromRGB(0, 140, 255)
+UIStroke.Thickness = 2
+UIStroke.Transparency = 0.2
+
+-- Título
+local TextLabel = Instance.new("TextLabel")
+TextLabel.Size = UDim2.new(1, -20, 0, 40)
+TextLabel.Position = UDim2.new(0, 10, 0, 10)
+TextLabel.BackgroundTransparency = 1
+TextLabel.Text = "OWNER SCRIPTS"
+TextLabel.Font = Enum.Font.GothamBold
+TextLabel.TextSize = 20
+TextLabel.TextColor3 = Color3.fromRGB(0, 140, 255)
+TextLabel.Parent = Frame
+
+-- Botão Auto TP
+local AutoTPButton = Instance.new("TextButton")
+AutoTPButton.Size = UDim2.new(1, -40, 0, 45)
+AutoTPButton.Position = UDim2.new(0, 20, 0, 60)
+AutoTPButton.BackgroundColor3 = Color3.fromRGB(0, 100, 0)
+AutoTPButton.Text = "⚡ AUTO TP: ON"
+AutoTPButton.Font = Enum.Font.GothamBold
+AutoTPButton.TextSize = 16
+AutoTPButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+AutoTPButton.Parent = Frame
+
+local AutoTPCorner = Instance.new("UICorner")
+AutoTPCorner.Parent = AutoTPButton
+AutoTPCorner.CornerRadius = UDim.new(0, 10)
+
+local AutoTPStroke = Instance.new("UIStroke")
+AutoTPStroke.Parent = AutoTPButton
+AutoTPStroke.Color = Color3.fromRGB(0, 255, 100)
+AutoTPStroke.Thickness = 2
+
+-- Botão Desync
+local DesyncButton = Instance.new("TextButton")
+DesyncButton.Size = UDim2.new(1, -40, 0, 45)
+DesyncButton.Position = UDim2.new(0, 20, 0, 115)
+DesyncButton.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+DesyncButton.Text = "🔧 DESYNC"
+DesyncButton.Font = Enum.Font.GothamBold
+DesyncButton.TextSize = 16
+DesyncButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+DesyncButton.Parent = Frame
+
+local DesyncCorner = Instance.new("UICorner")
+DesyncCorner.Parent = DesyncButton
+DesyncCorner.CornerRadius = UDim.new(0, 10)
+
+local DesyncStroke = Instance.new("UIStroke")
+DesyncStroke.Parent = DesyncButton
+DesyncStroke.Color = Color3.fromRGB(255, 100, 0)
+DesyncStroke.Thickness = 2
+
+-- Info Label
+local InfoLabel = Instance.new("TextLabel")
+InfoLabel.Size = UDim2.new(1, -20, 0, 80)
+InfoLabel.Position = UDim2.new(0, 10, 0, 150)
+InfoLabel.BackgroundTransparency = 1
+InfoLabel.Text = "Auto Steal ativo automaticamente\nClique em Desync para ativar FFlags\n\nScript by Owner"
+InfoLabel.Font = Enum.Font.Gotham
+InfoLabel.TextSize = 12
+InfoLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
+InfoLabel.TextWrapped = true
+InfoLabel.Parent = Frame
+
+-- 🔍 Localiza sua base (DeliveryHitbox)
+local function GetMinhaBaseHitbox()
+    local plots = Workspace:FindFirstChild("Plots")
+    if not plots then return nil end
+
+    for _, plot in pairs(plots:GetChildren()) do
+        local sign = plot:FindFirstChild("PlotSign")
+        if sign then
+            local yourBase = sign:FindFirstChild("YourBase")
+            if yourBase and yourBase.Enabled then
+                local hitbox = plot:FindFirstChild("DeliveryHitbox")
+                if hitbox then return hitbox end
             end
-            table.insert(allAnimalsCache, {
-                name = animalName,
-                plot = plot.Name,
-                slot = podium.Name,
-                worldPosition = podium:GetPivot().Position,
-                uid = plot.Name .. "_" .. podium.Name,
-            })
-        end
-    end
-end
-local function initializeScanner()
-    task.wait(2)
-    local plots = workspace:WaitForChild("Plots", 10)
-    if not plots then 
-        return
-    end
-    for _, plot in ipairs(plots:GetChildren()) do
-        if plot:IsA("Model") then
-            scanSinglePlot(plot)
-        end
-    end
-    plots.ChildAdded:Connect(function(plot)
-        if plot:IsA("Model") then
-            task.wait(0.5)
-            scanSinglePlot(plot)
-        end
-    end)
-    task.spawn(function()
-        while task.wait(5) do
-            allAnimalsCache = {}
-            for _, plot in ipairs(plots:GetChildren()) do
-                if plot:IsA("Model") then
-                    scanSinglePlot(plot)
-                end
-            end
-        end
-    end)
-end
-local function findProximityPromptForAnimal(animalData)
-    if not animalData then return nil end
-    local cachedPrompt = PromptMemoryCache[animalData.uid]
-    if cachedPrompt and cachedPrompt.Parent then
-        return cachedPrompt
-    end
-    local plot = workspace.Plots:FindFirstChild(animalData.plot)
-    if not plot then return nil end
-    local podiums = plot:FindFirstChild("AnimalPodiums")
-    if not podiums then return nil end
-    local podium = podiums:FindFirstChild(animalData.slot)
-    if not podium then return nil end
-    local base = podium:FindFirstChild("Base")
-    if not base then return nil end
-    local spawn = base:FindFirstChild("Spawn")
-    if not spawn then return nil end
-    local attach = spawn:FindFirstChild("PromptAttachment")
-    if not attach then return nil end
-    for _, p in ipairs(attach:GetChildren()) do
-        if p:IsA("ProximityPrompt") then
-            PromptMemoryCache[animalData.uid] = p
-            return p
         end
     end
     return nil
 end
-local function updatePlayerVelocity()
-    local hrp = getHRP()
-    if not hrp then return end
-    local currentPos = hrp.Position
-    if LastPlayerPosition then
-        PlayerVelocity = (currentPos - LastPlayerPosition) / task.wait()
+
+-- FFlags para Desync
+local FFlags = {
+    GameNetPVHeaderRotationalVelocityZeroCutoffExponent = -5000,
+    LargeReplicatorWrite5 = true,
+    LargeReplicatorEnabled9 = true,
+    AngularVelociryLimit = 360,
+    TimestepArbiterVelocityCriteriaThresholdTwoDt = 2147483646,
+    S2PhysicsSenderRate = 15000,
+    DisableDPIScale = true,
+    MaxDataPacketPerSend = 2147483647,
+    PhysicsSenderMaxBandwidthBps = 20000,
+    TimestepArbiterHumanoidLinearVelThreshold = 21,
+    MaxMissedWorldStepsRemembered = -2147483648,
+    PlayerHumanoidPropertyUpdateRestrict = true,
+    SimDefaultHumanoidTimestepMultiplier = 0,
+    StreamJobNOUVolumeLengthCap = 2147483647,
+    DebugSendDistInSteps = -2147483648,
+    GameNetDontSendRedundantNumTimes = 1,
+    CheckPVLinearVelocityIntegrateVsDeltaPositionThresholdPercent = 1,
+    CheckPVDifferencesForInterpolationMinVelThresholdStudsPerSecHundredth = 1,
+    LargeReplicatorSerializeRead3 = true,
+    ReplicationFocusNouExtentsSizeCutoffForPauseStuds = 2147483647,
+    CheckPVCachedVelThresholdPercent = 10,
+    CheckPVDifferencesForInterpolationMinRotVelThresholdRadsPerSecHundredth = 1,
+    GameNetDontSendRedundantDeltaPositionMillionth = 1,
+    InterpolationFrameVelocityThresholdMillionth = 5,
+    StreamJobNOUVolumeCap = 2147483647,
+    InterpolationFrameRotVelocityThresholdMillionth = 5,
+    CheckPVCachedRotVelThresholdPercent = 10,
+    WorldStepMax = 30,
+    InterpolationFramePositionThresholdMillionth = 5,
+    TimestepArbiterHumanoidTurningVelThreshold = 1,
+    SimOwnedNOUCountThresholdMillionth = 2147483647,
+    GameNetPVHeaderLinearVelocityZeroCutoffExponent = -5000,
+    NextGenReplicatorEnabledWrite4 = true,
+    TimestepArbiterOmegaThou = 1073741823,
+    MaxAcceptableUpdateDelay = 1,
+    LargeReplicatorSerializeWrite4 = true
+}
+
+-- Função de Respawn
+local function respawnar(plr)
+    local rcdEnabled, wasHidden = false, false
+    if gethidden then
+        rcdEnabled = gethidden(Workspace, 'RejectCharacterDeletions') ~= Enum.RejectCharacterDeletions.Disabled
     end
-    LastPlayerPosition = currentPos
-end
-local function shouldSteal(animalData)
-    if not animalData or not animalData.worldPosition then return false end
-    local hrp = getHRP()
-    if not hrp then return false end
-    local currentDistance = (hrp.Position - animalData.worldPosition).Magnitude
-    return currentDistance <= AUTO_STEAL_PROX_RADIUS
-end
-local function buildStealCallbacks(prompt)
-    if InternalStealCache[prompt] then return end
-    local data = {
-        holdCallbacks = {},
-        triggerCallbacks = {},
-        ready = true,
-    }
-    local ok1, conns1 = pcall(getconnections, prompt.PromptButtonHoldBegan)
-    if ok1 and type(conns1) == "table" then
-        for _, conn in ipairs(conns1) do
-            if type(conn.Function) == "function" then
-                table.insert(data.holdCallbacks, conn.Function)
-            end
-        end
-    end
-    local ok2, conns2 = pcall(getconnections, prompt.Triggered)
-    if ok2 and type(conns2) == "table" then
-        for _, conn in ipairs(conns2) do
-            if type(conn.Function) == "function" then
-                table.insert(data.triggerCallbacks, conn.Function)
-            end
-        end
-    end
-    if (#data.holdCallbacks > 0) or (#data.triggerCallbacks > 0) then
-        InternalStealCache[prompt] = data
-    end
-end
-local function executeInternalStealAsync(prompt, animalData)
-    local data = InternalStealCache[prompt]
-    if not data or not data.ready then return false end
-    data.ready = false
-    IsStealing = true
-    StealProgress = 0
-    CurrentStealTarget = animalData
-    StealStartTime = tick()
-    task.spawn(function()
-        if #data.holdCallbacks > 0 then
-            for _, fn in ipairs(data.holdCallbacks) do
-                task.spawn(fn)
-            end
-        end
-        local startTime = tick()
-        while tick() - startTime < 1.3 do
-            StealProgress = (tick() - startTime) / 1.3
-            task.wait(0.05)
-        end
-        StealProgress = 1
-        if #data.triggerCallbacks > 0 then
-            for _, fn in ipairs(data.triggerCallbacks) do
-                task.spawn(fn)
-            end
-        end
-        task.wait(0.1)
-        data.ready = true
-        task.wait(0.3)
-        IsStealing = false
-        StealProgress = 0
-        CurrentStealTarget = nil
-    end)
-    return true
-end
-local function attemptSteal(prompt, animalData)
-    if not prompt or not prompt.Parent then return false end
-    buildStealCallbacks(prompt)
-    if not InternalStealCache[prompt] then return false end
-    return executeInternalStealAsync(prompt, animalData)
-end
-local function getNearestAnimal()
-    local hrp = getHRP()
-    if not hrp then return nil end
-    local nearest = nil
-    local minDist = math.huge
-    for _, animalData in ipairs(allAnimalsCache) do
-        if isMyBase(animalData.plot) then continue end
-        if animalData.worldPosition then
-            local dist = (hrp.Position - animalData.worldPosition).Magnitude
-            if dist < minDist then
-                minDist = dist
-                nearest = animalData
-            end
-        end
-    end
-    return nearest
-end
-local function autoStealLoop()
-    if stealConnection then stealConnection:Disconnect() end
-    if velocityConnection then velocityConnection:Disconnect() end
-    velocityConnection = RunService.Heartbeat:Connect(updatePlayerVelocity)
-    stealConnection = RunService.Heartbeat:Connect(function()
-        if not CONFIG.AUTO_STEAL_NEAREST then return end
-        if IsStealing then return end
-        local targetAnimal = getNearestAnimal()
-        if not targetAnimal then return end
-        if not shouldSteal(targetAnimal) then return end
-        if LastTargetUID ~= targetAnimal.uid then
-            LastTargetUID = targetAnimal.uid
-        end
-        local prompt = PromptMemoryCache[targetAnimal.uid]
-        if not prompt or not prompt.Parent then
-            prompt = findProximityPromptForAnimal(targetAnimal)
-        end
-        if prompt then
-            attemptSteal(prompt, targetAnimal)
-        end
-    end)
-end
-local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "AutoStealUI"
-screenGui.ResetOnSpawn = false
-screenGui.DisplayOrder = 999999
-screenGui.Parent = PlayerGui
-local buttonFrame = Instance.new("Frame")
-buttonFrame.Name = "ButtonFrame"
-buttonFrame.Size = UDim2.new(0, 145, 0, 45)
-buttonFrame.Position = UDim2.new(0, 10, 0, 10)
-buttonFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-buttonFrame.BackgroundTransparency = 0
-buttonFrame.BorderSizePixel = 0
-buttonFrame.Parent = screenGui
-local frameCorner = Instance.new("UICorner")
-frameCorner.CornerRadius = UDim.new(0, 10)
-frameCorner.Parent = buttonFrame
-local frameStroke = Instance.new("UIStroke")
-frameStroke.Thickness = 1.3
-frameStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-frameStroke.Color = Color3.fromRGB(255, 255, 255)
-frameStroke.Parent = buttonFrame
-local frameGradient = Instance.new("UIGradient")
-frameGradient.Color = ColorSequence.new({
-    ColorSequenceKeypoint.new(0.00, Color3.fromRGB(255, 50, 50)),
-    ColorSequenceKeypoint.new(0.25, Color3.fromRGB(0, 0, 0)),
-    ColorSequenceKeypoint.new(0.50, Color3.fromRGB(255, 50, 50)),
-    ColorSequenceKeypoint.new(0.75, Color3.fromRGB(0, 0, 0)),
-    ColorSequenceKeypoint.new(1.00, Color3.fromRGB(255, 50, 50))
-})
-frameGradient.Parent = frameStroke
-task.spawn(function()
-    while true do
-        frameGradient.Rotation = frameGradient.Rotation + 2
-        task.wait(0.02)
-    end
-end)
-local button = Instance.new("TextButton")
-button.Name = "AutoStealButton"
-button.Size = UDim2.new(0, 135, 0, 35)
-button.AnchorPoint = Vector2.new(0.5, 0.5) 
-button.Position = UDim2.new(0.5, 0, 0.5, 0) 
-button.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-button.Text = "INSTA GRAB: OFF"
-button.Font = Enum.Font.GothamBold
-button.TextSize = 13
-button.TextColor3 = Color3.fromRGB(255, 255, 255)
-button.BorderSizePixel = 0
-button.Parent = buttonFrame
-local buttonCorner = Instance.new("UICorner")
-buttonCorner.CornerRadius = UDim.new(0, 8)
-buttonCorner.Parent = button
-button.MouseButton1Click:Connect(function()
-    CONFIG.AUTO_STEAL_NEAREST = not CONFIG.AUTO_STEAL_NEAREST
-    if CONFIG.AUTO_STEAL_NEAREST then
-        button.Text = "INSTA GRAB: ON"
-        button.BackgroundColor3 = Color3.fromRGB(60, 150, 60)
+
+    if rcdEnabled and replicatesignal then
+        replicatesignal(plr.ConnectDiedSignalBackend)
+        task.wait(Players.RespawnTime - 0.1)
+        replicatesignal(plr.Kill)
     else
-        button.Text = "INSTA GRAB: OFF"
-        button.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-    end
-end)
-local showbarFrame = Instance.new("Frame")
-showbarFrame.Size = UDim2.new(0, 220, 0, 22)
-showbarFrame.Position = UDim2.new(0.5, -110, 0, -52)
-showbarFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-showbarFrame.BackgroundTransparency = 0.2
-showbarFrame.BorderSizePixel = 0
-showbarFrame.Visible = true
-showbarFrame.Parent = screenGui
-local showbarCorner = Instance.new("UICorner")
-showbarCorner.CornerRadius = UDim.new(0, 6)
-showbarCorner.Parent = showbarFrame
-local uiStroke = Instance.new("UIStroke")
-uiStroke.Thickness = 1.2
-uiStroke.Transparency = 0
-uiStroke.Color = Color3.fromRGB(255, 255, 255)
-uiStroke.Parent = showbarFrame
-local uiGradient = Instance.new("UIGradient")
-uiGradient.Color = ColorSequence.new({
-    ColorSequenceKeypoint.new(0.00, Color3.fromRGB(255, 50, 50)),
-    ColorSequenceKeypoint.new(0.20, Color3.fromRGB(0, 0, 0)),
-    ColorSequenceKeypoint.new(0.50, Color3.fromRGB(255, 50, 50)),
-    ColorSequenceKeypoint.new(0.80, Color3.fromRGB(0, 0, 0)),
-    ColorSequenceKeypoint.new(1.00, Color3.fromRGB(255, 50, 50))
-})
-uiGradient.Parent = uiStroke
-local progressBarBg = Instance.new("Frame")
-progressBarBg.Size = UDim2.new(0.9, 0, 0, 8)
-progressBarBg.Position = UDim2.new(0.05, 0, 0.5, -4)
-progressBarBg.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-progressBarBg.BorderSizePixel = 0
-progressBarBg.Parent = showbarFrame
-local progressBarCorner = Instance.new("UICorner")
-progressBarCorner.CornerRadius = UDim.new(1, 0)
-progressBarCorner.Parent = progressBarBg
-local progressBarFill = Instance.new("Frame")
-progressBarFill.Size = UDim2.new(0, 0, 1, 0)
-progressBarFill.Position = UDim2.new(0, 0, 0, 0)
-progressBarFill.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
-progressBarFill.BorderSizePixel = 0
-progressBarFill.Parent = progressBarBg
-local fillCorner = Instance.new("UICorner")
-fillCorner.CornerRadius = UDim.new(1, 0)
-fillCorner.Parent = progressBarFill
-local fillGradient = Instance.new("UIGradient")
-fillGradient.Color = ColorSequence.new({
-    ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 50, 50)),
-    ColorSequenceKeypoint.new(0.5, Color3.fromRGB(255, 150, 50)),
-    ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 50, 50))
-})
-fillGradient.Parent = progressBarFill
-local radiusFrame = Instance.new("Frame")
-radiusFrame.Size = UDim2.new(0, 40, 0, 22)
-radiusFrame.Position = UDim2.new(0.5, 115, 0, -52)
-radiusFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-radiusFrame.BackgroundTransparency = 0.2
-radiusFrame.BorderSizePixel = 0
-radiusFrame.Visible = true
-radiusFrame.Parent = screenGui
-local radiusCorner = Instance.new("UICorner")
-radiusCorner.CornerRadius = UDim.new(0, 6)
-radiusCorner.Parent = radiusFrame
-local radiusStroke = Instance.new("UIStroke")
-radiusStroke.Thickness = 1.2
-radiusStroke.Transparency = 0
-radiusStroke.Color = Color3.fromRGB(255, 255, 255)
-radiusStroke.Parent = radiusFrame
-local radiusGradient = Instance.new("UIGradient")
-radiusGradient.Color = ColorSequence.new({
-    ColorSequenceKeypoint.new(0.00, Color3.fromRGB(255, 50, 50)),
-    ColorSequenceKeypoint.new(0.20, Color3.fromRGB(0, 0, 0)),
-    ColorSequenceKeypoint.new(0.50, Color3.fromRGB(255, 50, 50)),
-    ColorSequenceKeypoint.new(0.80, Color3.fromRGB(0, 0, 0)),
-    ColorSequenceKeypoint.new(1.00, Color3.fromRGB(255, 50, 50))
-})
-radiusGradient.Parent = radiusStroke
-local radiusText = Instance.new("TextButton")
-radiusText.Size = UDim2.new(1, 0, 1, 0)
-radiusText.Position = UDim2.new(0, 0, 0, 0)
-radiusText.BackgroundTransparency = 1
-radiusText.Text = AUTO_STEAL_PROX_RADIUS
-radiusText.Font = Enum.Font.GothamBold
-radiusText.TextSize = 13
-radiusText.TextColor3 = Color3.fromRGB(255, 255, 255)
-radiusText.Parent = radiusFrame
-local typing = false
-local inputConnection
-local function createCircle(character)
-    for _, part in ipairs(circleParts) do
-        if part then part:Destroy() end
-    end
-    circleParts = {}
-    CIRCLE_RADIUS = AUTO_STEAL_PROX_RADIUS
-    local root = character:WaitForChild("HumanoidRootPart")
-    local points = {}
-    for i = 0, PartsCount - 1 do
-        local angle = math.rad(i * 360 / PartsCount)
-        table.insert(points, Vector3.new(math.cos(angle), 0, math.sin(angle)) * CIRCLE_RADIUS)
-    end
-    for i = 1, #points do
-        local nextIndex = i % #points + 1
-        local p1 = points[i]
-        local p2 = points[nextIndex]
-        local part = Instance.new("Part")
-        part.Anchored = true
-        part.CanCollide = false
-        part.Size = Vector3.new((p2 - p1).Magnitude, PART_HEIGHT, PART_THICKNESS)
-        part.Color = PART_COLOR
-        part.Material = Enum.Material.Neon
-        part.Transparency = 0.3
-        part.TopSurface = Enum.SurfaceType.Smooth
-        part.BottomSurface = Enum.SurfaceType.Smooth
-        part.Parent = workspace
-        table.insert(circleParts, part)
+        local char = plr.Character
+        local hum = char:FindFirstChildWhichIsA('Humanoid')
+        if hum then
+            hum:ChangeState(Enum.HumanoidStateType.Dead)
+        end
+        char:ClearAllChildren()
+        local newChar = Instance.new('Model')
+        newChar.Parent = Workspace
+        plr.Character = newChar
+        task.wait()
+        plr.Character = char
+        newChar:Destroy()
     end
 end
-local function updateCircle(character)
-    local root = character:FindFirstChild("HumanoidRootPart")
-    if not root then return end
-    local points = {}
-    for i = 0, PartsCount - 1 do
-        local angle = math.rad(i * 360 / PartsCount)
-        table.insert(points, Vector3.new(math.cos(angle), 0, math.sin(angle)) * CIRCLE_RADIUS)
-    end
-    for i, part in ipairs(circleParts) do
-        local nextIndex = i % #points + 1
-        local p1 = points[i]
-        local p2 = points[nextIndex]
-        local center = (p1 + p2) / 2 + root.Position
-        part.CFrame = CFrame.new(center, center + Vector3.new(p2.X - p1.X, 0, p2.Z - p1.Z)) * CFrame.Angles(0, math.pi/2, 0)
-    end
-end
-local function onCharacterAdded(character)
-    if circleEnabled then
-        createCircle(character)
-        RunService:BindToRenderStep("CircleFollow", Enum.RenderPriority.Camera.Value + 1, function()
-            updateCircle(character)
+
+-- Função Unwalk (desabilita animações)
+local function disableAnims(character)
+    if not character then return end
+
+    local humanoid = character:FindFirstChildOfClass("Humanoid") or character:WaitForChild("Humanoid", 5)
+    if humanoid then
+        pcall(function()
+            for _, track in ipairs(humanoid:GetPlayingAnimationTracks()) do
+                track:Stop()
+            end
         end)
     end
-end
-local function updateCircleRadius()
-    CIRCLE_RADIUS = AUTO_STEAL_PROX_RADIUS
-    local character = LocalPlayer.Character
-    if character and circleEnabled then
-        createCircle(character)
-    end
-end
-radiusText.MouseButton1Click:Connect(function()
-    if typing then return end
-    typing = true
-    local originalText = radiusText.Text
-    local textBox = Instance.new("TextBox")
-    textBox.Size = UDim2.new(1, 0, 1, 0)
-    textBox.Position = UDim2.new(0, 0, 0, 0)
-    textBox.BackgroundTransparency = 1
-    textBox.Text = AUTO_STEAL_PROX_RADIUS
-    textBox.Font = Enum.Font.GothamBold
-    textBox.TextSize = 13
-    textBox.TextColor3 = Color3.fromRGB(255, 255, 255)
-    textBox.ClearTextOnFocus = false
-    textBox.Parent = radiusFrame
-    textBox:CaptureFocus()
-    inputConnection = textBox.FocusLost:Connect(function(enterPressed)
-        if enterPressed then
-            local num = tonumber(textBox.Text)
-            if num and num >= 5 and num <= 200 then
-                AUTO_STEAL_PROX_RADIUS = math.floor(num)
-                updateCircleRadius()
+
+    pcall(function()
+        for _, obj in ipairs(character:GetDescendants()) do
+            if obj:IsA("Animator") or obj:IsA("AnimationController") then
+                obj:Destroy()
             end
         end
-        textBox:Destroy()
-        radiusText.Text = AUTO_STEAL_PROX_RADIUS
-        typing = false
-        inputConnection:Disconnect()
     end)
-end)
-local progressTween = nil
-task.spawn(function()
-    while task.wait(0.03) do
-        if not typing then
-            radiusText.Text = AUTO_STEAL_PROX_RADIUS
+
+    local conn
+    conn = character.DescendantAdded:Connect(function(desc)
+        if desc:IsA("Animator") or desc:IsA("AnimationController") then
+            pcall(function() desc:Destroy() end)
+        elseif desc:IsA("Humanoid") then
+            pcall(function()
+                for _, track in ipairs(desc:GetPlayingAnimationTracks()) do
+                    track:Stop()
+                end
+            end)
         end
-        if IsStealing then
-            if progressTween then
-                progressTween:Cancel()
+    end)
+
+    character.AncestryChanged:Connect(function(_, parent)
+        if not parent and conn then
+            conn:Disconnect()
+        end
+    end)
+end
+
+-- Botão Desync (ativa FFlags)
+DesyncButton.MouseButton1Click:Connect(function()
+    for name, value in pairs(FFlags) do
+        pcall(function()
+            setfflag(tostring(name), tostring(value))
+        end)
+    end
+    
+    DesyncButton.Text = "✅ DESYNC ATIVADO"
+    DesyncButton.BackgroundColor3 = Color3.fromRGB(0, 100, 0)
+    
+    respawnar(LP)
+    
+    -- Apply Unwalk after respawn
+    wait(0.5)
+    if LP.Character then
+        disableAnims(LP.Character)
+    end
+    
+    -- Apply to future respawns
+    LP.CharacterAdded:Connect(disableAnims)
+    
+    wait(2)
+    DesyncButton.Text = "🔧 DESYNC"
+    DesyncButton.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+end)
+
+-- Auto Steal Function
+local function toggleAutoSteal(Value)
+    autoStealEnabled = Value
+    StatusLabel.Text = autoStealEnabled and "💰 Auto Steal: ON" or "💰 Auto Steal: OFF"
+    StatusLabel.TextColor3 = autoStealEnabled and Color3.fromRGB(0, 255, 100) or Color3.fromRGB(255, 50, 50)
+    
+    if not Value then
+        return
+    end
+
+    local TARGET_HOLD_DURATION = 1.5 
+    local TARGET_MAX_DISTANCE = 10   
+    local CHECK_INTERVAL = 0.25      
+    local HOLD_TIME = 0.6            
+
+    local Character = LP.Character or LP.CharacterAdded:Wait()
+    local RootPart = Character:WaitForChild("HumanoidRootPart")
+    local myPlot = Character:FindFirstAncestorOfClass("Model") 
+
+    LP.CharacterAdded:Connect(function(c)
+        task.wait(0.12)
+        Character = c
+        RootPart = c:WaitForChild("HumanoidRootPart")
+        myPlot = c:FindFirstAncestorOfClass("Model")
+    end)
+
+    local function getBasePart(p) 
+        local par = p.Parent
+        if par:IsA("BasePart") then return par end
+        if par:IsA("Attachment") and par.Parent:IsA("BasePart") then return par.Parent end
+        if par:IsA("Model") and par.PrimaryPart then return par.PrimaryPart end
+        return nil
+    end
+
+    local function isCandidate(prompt)
+        if not prompt.Enabled or prompt.ActionText ~= "Steal" then
+            return false 
+        end
+        if math.abs((prompt.HoldDuration or 0) - TARGET_HOLD_DURATION) > 0.1
+            or math.abs((prompt.MaxActivationDistance or 0) - TARGET_MAX_DISTANCE) > 1 then
+            return false 
+        end
+
+        local part = getBasePart(prompt)
+        if not part or not RootPart then return false end
+
+        local plotsContainer = Workspace:FindFirstChild("Plots")
+        if plotsContainer then
+            local plot = part:FindFirstAncestorWhichIsA("Model")
+            if plot and plot.Parent == plotsContainer and plot == myPlot then
+                return false 
             end
-            progressTween = game:GetService("TweenService"):Create(
-                progressBarFill,
-                TweenInfo.new(0.1, Enum.EasingStyle.Linear),
-                {Size = UDim2.new(StealProgress, 0, 1, 0)}
-            )
-            progressTween:Play()
-        else
-            if progressTween then
-                progressTween:Cancel()
-                progressTween = nil
+        end
+
+        local dist = (part.Position - RootPart.Position).Magnitude
+        return dist <= TARGET_MAX_DISTANCE + 0.5, part, dist
+    end
+
+    local function findClosest()
+        local best, bestDist = nil, math.huge
+        for _, v in ipairs(Workspace:GetDescendants()) do
+            if v:IsA("ProximityPrompt") then
+                local ok, part, dist = isCandidate(v)
+                if ok and dist < bestDist then
+                    best = v
+                    bestDist = dist
+                end
             end
-            if progressBarFill.Size.X.Scale > 0 then
-                progressBarFill.Size = UDim2.new(
-                    math.max(0, progressBarFill.Size.X.Scale - 0.03), 
-                    0, 
-                    1, 
-                    0
-                )
+        end
+        return best
+    end
+
+    local function tryActivate(prompt)
+        if not prompt then return end
+        
+        -- Teleporta para o item antes de ativar
+        local part = getBasePart(prompt)
+        if part and RootPart then
+            local targetPos = Vector3.new(-363.87, -7.71, 104.71) + Vector3.new(0, 5, 0)
+            if Character and Character:FindFirstChild("HumanoidRootPart") then
+                Character.HumanoidRootPart.CFrame = CFrame.new(targetPos)
+                task.wait(0.1)
+            end
+        end
+        
+        pcall(function()
+            if typeof(prompt.InputHoldBegin) == "function" then
+                prompt:InputHoldBegin()
+                task.wait(HOLD_TIME)
+                prompt:InputHoldEnd()
+            end
+        end)
+        task.wait(0.1)
+        pcall(function()
+            fireproximityprompt(prompt, 1) 
+            task.wait(HOLD_TIME)
+            fireproximityprompt(prompt, 0) 
+        end)
+    end
+
+    task.spawn(function()
+        while autoStealEnabled do
+            task.wait(CHECK_INTERVAL)
+            local prompt = findClosest() 
+            if prompt then
+                tryActivate(prompt)      
+            end
+        end
+    end)
+end
+
+-- Inicia Auto Steal automaticamente
+toggleAutoSteal(true)
+
+-- Proximity Prompt Handler com Teleporte e MoveTo
+game:GetService("ProximityPromptService").PromptButtonHoldEnded:Connect(function(Prompt, PlayerWhoTriggered)
+    if PlayerWhoTriggered == LP then
+        -- Teleporta para a posição fixa
+        local targetPos = Vector3.new(-363.87, -7.71, 104.71) + Vector3.new(0, 5, 0)
+        if LP.Character and LP.Character:FindFirstChild("HumanoidRootPart") then
+            LP.Character.HumanoidRootPart.CFrame = CFrame.new(targetPos)
+        end
+        
+        task.wait(1.2) -- Aguarda 1.2 segundos após o TP
+        
+        -- Volta para a base usando MoveTo
+        local baseHitbox = GetMinhaBaseHitbox()
+        if baseHitbox then
+            local basePos = baseHitbox.Position
+            if LP.Character and LP.Character:FindFirstChild("Humanoid") then
+                LP.Character.Humanoid:MoveTo(basePos)
             end
         end
     end
 end)
-initializeScanner()
-autoStealLoop()
-if LocalPlayer.Character then
-    onCharacterAdded(LocalPlayer.Character)
+
+-- Auto Steal separado (sem teleporte, só ativa prompts)
+local autoStealEnabled2 = true
+
+local function autoStealLoop()
+    local TARGET_HOLD_DURATION = 1.5 
+    local TARGET_MAX_DISTANCE = 10   
+    local CHECK_INTERVAL = 0.25      
+    local HOLD_TIME = 0.6            
+
+    local Character = LP.Character or LP.CharacterAdded:Wait()
+    local RootPart = Character:WaitForChild("HumanoidRootPart")
+    local myPlot = Character:FindFirstAncestorOfClass("Model") 
+
+    LP.CharacterAdded:Connect(function(c)
+        task.wait(0.12)
+        Character = c
+        RootPart = c:WaitForChild("HumanoidRootPart")
+        myPlot = c:FindFirstAncestorOfClass("Model")
+    end)
+
+    local function getBasePart(p) 
+        local par = p.Parent
+        if par:IsA("BasePart") then return par end
+        if par:IsA("Attachment") and par.Parent:IsA("BasePart") then return par.Parent end
+        if par:IsA("Model") and par.PrimaryPart then return par.PrimaryPart end
+        return nil
+    end
+
+    local function isCandidate(prompt)
+        if not prompt.Enabled or prompt.ActionText ~= "Steal" then
+            return false 
+        end
+        if math.abs((prompt.HoldDuration or 0) - TARGET_HOLD_DURATION) > 0.1
+            or math.abs((prompt.MaxActivationDistance or 0) - TARGET_MAX_DISTANCE) > 1 then
+            return false 
+        end
+
+        local part = getBasePart(prompt)
+        if not part or not RootPart then return false end
+
+        local plotsContainer = Workspace:FindFirstChild("Plots")
+        if plotsContainer then
+            local plot = part:FindFirstAncestorWhichIsA("Model")
+            if plot and plot.Parent == plotsContainer and plot == myPlot then
+                return false 
+            end
+        end
+
+        local dist = (part.Position - RootPart.Position).Magnitude
+        return dist <= TARGET_MAX_DISTANCE + 0.5, part, dist
+    end
+
+    local function findClosest()
+        local best, bestDist = nil, math.huge
+        for _, v in ipairs(Workspace:GetDescendants()) do
+            if v:IsA("ProximityPrompt") then
+                local ok, part, dist = isCandidate(v)
+                if ok and dist < bestDist then
+                    best = v
+                    bestDist = dist
+                end
+            end
+        end
+        return best
+    end
+
+    local function tryActivate(prompt)
+        if not prompt then return end
+        
+        -- SEM TELEPORTE - apenas ativa o prompt
+        pcall(function()
+            if typeof(prompt.InputHoldBegin) == "function" then
+                prompt:InputHoldBegin()
+                task.wait(HOLD_TIME)
+                prompt:InputHoldEnd()
+            end
+        end)
+        task.wait(0.1)
+        pcall(function()
+            fireproximityprompt(prompt, 1) 
+            task.wait(HOLD_TIME)
+            fireproximityprompt(prompt, 0) 
+        end)
+    end
+
+    task.spawn(function()
+        while autoStealEnabled2 do
+            task.wait(CHECK_INTERVAL)
+            local prompt = findClosest() 
+            if prompt then
+                tryActivate(prompt)      
+            end
+        end
+    end)
 end
-LocalPlayer.CharacterAdded:Connect(onCharacterAdded)
+
+-- NÃO inicia o Auto Steal automático (removido)
+-- autoStealLoop()
